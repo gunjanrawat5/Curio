@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 from uuid import uuid4
 from datetime import datetime, timezone
+from backend.whiteboard import empty_board
 
 GREETING = 'I know a little about fractions… but I get the pieces mixed up. Can you teach me why ⅓ is bigger than ¼?'
 CHALLENGE = 'A new puzzle! Draw your own bars to compare 1/6 and 1/8. Which is bigger, and why?'
@@ -23,7 +24,7 @@ class SessionStore:
         return sqlite3.connect(self.path, timeout=10)
 
     def create(self) -> dict:
-        session = {'id': str(uuid4()), 'topic_id': 'fractions_intro', 'phase': 'teaching', 'messages': [event('curio', GREETING)], 'hints': 0, 'requests': {}}
+        session = {'id': str(uuid4()), 'topic_id': 'fractions_intro', 'phase': 'teaching', 'messages': [event('curio', GREETING)], 'hints': 0, 'requests': {}, 'whiteboard': empty_board()}
         with self.connect() as db:
             db.execute('INSERT INTO sessions VALUES (?, ?)', (session['id'], json.dumps(session)))
         return session
@@ -31,7 +32,13 @@ class SessionStore:
     def get(self, session_id: str) -> dict | None:
         with self.connect() as db:
             row = db.execute('SELECT data FROM sessions WHERE id = ?', (session_id,)).fetchone()
-        return json.loads(row[0]) if row else None
+        if not row:
+            return None
+        session = json.loads(row[0])
+        session.setdefault('whiteboard', empty_board())
+        session['whiteboard'].setdefault('diagrams', [])
+        session['whiteboard'].setdefault('last_clear_id', None)
+        return session
 
     def save(self, session: dict):
         with self.connect() as db:

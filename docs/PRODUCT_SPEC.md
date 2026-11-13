@@ -37,3 +37,19 @@ The initialized UI is explicitly a local demo. Scripted replies are not model ev
 ## Implementation update — connected teaching loop
 
 The frontend now creates and resumes FastAPI sessions. SQLite persists canonical messages, hint usage and practice phase. Gemini produces context-aware Curio replies using backend-only credentials; scripted conversation replies have been removed. Completed turns are committed atomically, and request IDs prevent duplicate turns on retry. The interface keeps unsent text on failures. Hint requests and the switch to independent practice preserve conversation history. Drawing remains local and is not sent to Gemini. Voice input, sketch analysis, independent grading and mastery reports remain pending. The service currently targets one local backend worker and has no public authentication layer.
+
+## Conversation scope update
+
+Curio accepts questions and explanations about any mathematics topic. It answers direct math questions with concise explanations and stays in the curious student role when the learner teaches. Fractions remain the default demo, curated topic, whiteboard example, hint ladder and independent practice challenge. General math conversations do not imply subject-specific assessment support. Non-math requests are redirected toward mathematics.
+
+## Implementation update — connected whiteboard actions
+
+Curio now emits schema-constrained fraction creation and shading commands with conversational replies. The backend validates the complete command batch before committing the turn and diagram together. Each bar has a stable ID, ownership and source event; the board has a monotonic revision, undo snapshots and a visible last-action message. Explicit slash fractions must match the requested numerator and denominator exactly. AI cannot silently replace bars, modify partitions, erase learner strokes, or draw during independent practice. UI controls use the same validated backend path, and bar shading persists in SQLite. Four equal-width bars and denominators up to 24 are supported. Learners may toggle individual pieces or undo bar edits independently from freehand strokes. Snapshot vision and independent grading remain pending.
+
+## Implementation update — broader mathematics drawing
+
+Curio can compose number lines, coordinate diagrams, geometry and equations from bounded 2D line/arrow/circle/polygon/text primitives. Each element has a stable ID; selection controls support movement and text-label editing with undo. Function-graph commands supply an expression and coordinate ranges; a backend AST allowlist computes 401 samples without eval, arbitrary calls or executable model code. Undefined values and large visual jumps split graph segments. All diagram commands share revision checks, source metadata, persistence, atomic batches and independent-practice restrictions. One general diagram or up to four fraction bars fits at once. Geometry remains illustrative; finite plots are not symbolic proofs. Freehand vision, 3D rendering and universal mathematical notation remain outside the current renderer.
+
+## Requested behavior update — clear and redraw
+
+Learners may ask Curio to erase the board or start a new drawing without using the manual clear button. This explicitly authorizes a structured clear followed by the new drawing in the same atomic batch; Curio describes the clear in its response. This replaces the earlier requirement to request manual clearing on an occupied board. Additive requests and existing-element edits retain the board. Clear actions carry an ID so the client removes only the submitted pen-stroke snapshot once; newly drawn strokes survive pending requests and retries. Diagram undo restores the previous clear ID and diagrams, and the browser restores cleared strokes where available in current-tab memory. Independent practice restrictions still apply.

@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from backend.main import app
 from backend import main, gemini
 from backend.store import SessionStore
+from backend.whiteboard import CurioReply
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -28,9 +29,9 @@ def test_persisted_session_and_no_internal_fields(client):
 
 def test_history_and_retry_are_server_authoritative(client, monkeypatch):
     calls = []
-    async def reply(messages, phase):
+    async def reply(messages, phase, board):
         calls.append((messages, phase))
-        return 'Why do the wholes need to be the same size?'
+        return CurioReply(text='Why do the wholes need to be the same size?')
     monkeypatch.setattr(main, 'generate_reply', reply)
     data = session(client)
     path = f"/sessions/{data['id']}/messages"
@@ -91,10 +92,10 @@ def test_concurrent_duplicate_turn_only_calls_provider_once(client, monkeypatch)
     from concurrent.futures import ThreadPoolExecutor
     import asyncio
     calls = []
-    async def reply(messages, phase):
+    async def reply(messages, phase, board):
         calls.append(messages)
         await asyncio.sleep(0.03)
-        return 'What happens to the pieces?'
+        return CurioReply(text='What happens to the pieces?')
     monkeypatch.setattr(main, 'generate_reply', reply)
     data = session(client)
     path = f"/sessions/{data['id']}/messages"
@@ -104,3 +105,27 @@ def test_concurrent_duplicate_turn_only_calls_provider_once(client, monkeypatch)
     assert all(response.status_code == 200 for response in responses)
     assert len(calls) == 1
     assert len(client.get('/sessions/' + data['id']).json()['messages']) == 3
+
+def test_exit_challenge_restores_drawing_preserves_history_and_is_idempotent(client, monkeypatch):
+    from backend.whiteboard import CreateBar
+    data=session(client)
+    base='/sessions/'+data['id']
+    client.post(base+'/challenge',json=action())
+    body=action()
+    resumed=client.post(base+'/explore',json=body)
+    assert resumed.status_code==200
+    state=resumed.json()
+    assert state['phase']=='teaching'
+    assert [m['kind'] for m in state['messages']]==['message','challenge','explore']
+    assert client.post(base+'/explore',json=body).json()==state
+    assert client.get(base).json()==state
+    async def reply(messages,phase,board):
+        assert phase=='teaching'
+        return CurioReply(text='Here is a bar.',commands=[CreateBar(type='create_fraction_bar',numerator=1,denominator=3)])
+    monkeypatch.setattr(main,'generate_reply',reply)
+    drawn=client.post(base+'/messages',json={**action(),'text':'draw 1/3','canvas_revision':state['whiteboard']['revision']}).json()
+    assert len(drawn['whiteboard']['bars'])==1
+    assert client.post(base+'/hints',json=action()).status_code==200
+    again=client.post(base+'/challenge',json=action()).json()
+    assert again['phase']=='challenge'
+    assert again['whiteboard']['bars']==[]

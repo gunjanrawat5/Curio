@@ -1,8 +1,11 @@
 """Curio teaching sessions. Run one local Uvicorn worker (per-session locks)."""
 import asyncio
 import os
+import json
+from copy import deepcopy
+from typing import Literal
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -10,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from backend.store import SessionStore, event, CHALLENGE
 from backend.gemini import generate_reply, ProviderError
+from backend.whiteboard import CreateBar, ShadePart, DiagramCommand, BoardError, apply_commands
 
 load_dotenv(Path(__file__).resolve().parents[1] / '.env')
 
@@ -25,9 +29,15 @@ app.add_middleware(CORSMiddleware, allow_origins=[s.strip() for s in os.getenv('
 class Turn(BaseModel):
     request_id: UUID
     text: str = Field(min_length=1, max_length=4000)
+    canvas_revision: int | None = Field(default=None, ge=0)
 
 class Action(BaseModel):
     request_id: UUID
+
+class BoardAction(Action):
+    canvas_revision: int = Field(ge=0)
+    operation: Literal['edit', 'clear', 'undo']
+    commands: list[DiagramCommand] = Field(default_factory=list, max_length=8)
 
 def get_session(session_id: UUID):
     session = app.state.store.get(str(session_id))
@@ -36,7 +46,10 @@ def get_session(session_id: UUID):
     return session
 
 def public(session):
-    return {k: v for k, v in session.items() if k != 'requests'}
+    result = {k: v for k, v in session.items() if k != 'requests'}
+    result['whiteboard'] = {k: v for k, v in session['whiteboard'].items() if k != 'history'}
+    result['whiteboard']['can_undo'] = bool(session['whiteboard']['history'])
+    return result
 
 def lock(session_id):
     return app.state.locks.setdefault(str(session_id), asyncio.Lock())
@@ -79,10 +92,22 @@ async def send_message(session_id: UUID, turn: Turn):
         learner = event('you', text)
         try:
             # The caller cannot replace history or the system prompt.
-            reply = await generate_reply([*session['messages'], learner], session['phase'])
+            reply = await generate_reply([*session['messages'], learner], session['phase'], {k: v for k, v in session['whiteboard'].items() if k != 'history'})
         except ProviderError as exc:
             raise HTTPException(exc.status, exc.message) from None
-        session['messages'].extend([learner, event('curio', reply)])
+        if reply.commands:
+            if turn.canvas_revision is None or turn.canvas_revision != session['whiteboard']['revision']:
+                reply_text = "The board changed while we were talking. Please send that drawing request again."
+            else:
+                try:
+                    session['whiteboard'] = apply_commands(session['whiteboard'], reply.commands, 'ai', learner['id'], session['phase'], text)
+                    reply_text = reply.text
+                except BoardError as exc:
+                    # Do not echo a model's success claim when its commands were rejected.
+                    reply_text = str(exc)
+        else:
+            reply_text = reply.text
+        session['messages'].extend([learner, event('curio', reply_text)])
         session['requests'][str(turn.request_id)] = fingerprint
         app.state.store.save(session)
         return public(session)
@@ -110,7 +135,66 @@ async def challenge(session_id: UUID, action: Action):
             return public(session)
         if session['phase'] != 'challenge':
             session['phase'] = 'challenge'
+            session['whiteboard'] = {**session['whiteboard'], 'bars': [], 'diagrams': [], 'history': [], 'revision': session['whiteboard']['revision'] + 1, 'last_action': None}
             session['messages'].append(event('curio', CHALLENGE, 'challenge'))
         session['requests'][str(action.request_id)] = 'challenge'
+        app.state.store.save(session)
+        return public(session)
+
+
+@app.post('/sessions/{session_id}/whiteboard')
+async def edit_whiteboard(session_id: UUID, action: BoardAction):
+    async with lock(session_id):
+        session = get_session(session_id)
+        fingerprint = 'board:' + json.dumps(action.model_dump(mode='json', exclude={'request_id'}), sort_keys=True)
+        if already_done(session, action.request_id, fingerprint):
+            return public(session)
+        board = session['whiteboard']
+        if action.canvas_revision != board['revision']:
+            raise HTTPException(409, 'The board changed. Refresh it and try again.')
+        if action.operation != 'edit' and action.commands:
+            raise HTTPException(422, 'Undo and clear cannot contain drawing commands.')
+        if action.operation == 'edit':
+            try:
+                board = apply_commands(board, action.commands, 'learner', str(action.request_id), session['phase'])
+            except BoardError as exc:
+                raise HTTPException(422, str(exc)) from None
+        elif action.operation == 'clear':
+            board = deepcopy(board)
+            board['history'].append({'bars': deepcopy(board['bars']), 'diagrams': deepcopy(board.get('diagrams', [])), 'source': 'learner', 'source_event_id': str(action.request_id), 'commands': [], 'last_clear_id': board.get('last_clear_id')})
+            board['last_clear_id'] = str(uuid4())
+            board['bars'] = []
+            board['diagrams'] = []
+            board['revision'] += 1
+            board['last_action'] = {'source': 'learner', 'description': 'You cleared the diagrams'}
+        elif action.operation == 'undo':
+            if not board['history']:
+                raise HTTPException(409, 'No diagram actions to undo.')
+            if session['phase'] == 'challenge':
+                raise HTTPException(409, 'Previous examples cannot be restored during independent practice.')
+            board = deepcopy(board)
+            previous = board['history'].pop()
+            board['bars'] = previous['bars']
+            board['diagrams'] = previous.get('diagrams', [])
+            board['last_clear_id'] = previous.get('last_clear_id')
+            board['revision'] += 1
+            board['last_action'] = {'source': 'learner', 'description': 'You undid the last diagram action', 'operation': 'undo'}
+        session['whiteboard'] = board
+        session['requests'][str(action.request_id)] = fingerprint
+        app.state.store.save(session)
+        return public(session)
+
+
+@app.post('/sessions/{session_id}/explore')
+async def explore(session_id: UUID, action: Action):
+    """Leave independent practice explicitly, retaining all prior evidence."""
+    async with lock(session_id):
+        session = get_session(session_id)
+        if already_done(session, action.request_id, 'explore'):
+            return public(session)
+        if session['phase'] != 'teaching':
+            session['phase'] = 'teaching'
+            session['messages'].append(event('curio', "We're back to exploring math together! I can help draw again. What would you like to put on the board?", 'explore'))
+        session['requests'][str(action.request_id)] = 'explore'
         app.state.store.save(session)
         return public(session)
