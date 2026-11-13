@@ -33,3 +33,7 @@ Fractions first: compare 1/3 and 1/4 using equal-sized wholes and equal parts. V
 5. Evaluator ten-transcript harness, durable reports, reconnect behavior and end-to-end checks.
 
 The initialized UI is explicitly a local demo. Scripted replies are not model evaluation. It must not award mastery, claim sketch understanding, fabricate benchmark numbers, or present AI diagrams as learner evidence.
+
+## Implementation update — connected teaching loop
+
+The frontend now creates and resumes FastAPI sessions. SQLite persists canonical messages, hint usage and practice phase. Gemini produces context-aware Curio replies using backend-only credentials; scripted conversation replies have been removed. Completed turns are committed atomically, and request IDs prevent duplicate turns on retry. The interface keeps unsent text on failures. Hint requests and the switch to independent practice preserve conversation history. Drawing remains local and is not sent to Gemini. Voice input, sketch analysis, independent grading and mastery reports remain pending. The service currently targets one local backend worker and has no public authentication layer.
