@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TeachBack Teacher Report</title>
+<style>
+  :root {
+    --bg: #f6f4ef; --card: #ffffff; --ink: #1f2430; --muted: #646b7a; --line: #e4e0d6;
+    --good: #1c7a4a; --good-bg: #e3f4ea; --warn: #9a5b00; --warn-bg: #fdf0d5;
+    --bad: #b3261e; --bad-bg: #fbe5e3; --none: #646b7a; --none-bg: #ecebe6; --accent: #3b5bdb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171c; --card: #1e2128; --ink: #eceef2; --muted: #a0a7b5; --line: #30343e;
+      --good: #6fd39b; --good-bg: #173325; --warn: #f0bf62; --warn-bg: #3a2c10;
+      --bad: #f39b94; --bad-bg: #41201d; --none: #a0a7b5; --none-bg: #2a2d35; --accent: #8fa5ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; align-items: baseline; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 12px; }
+  .meta { color: var(--muted); font-size: 14px; }
+  .sample { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 12px; margin-top: 16px; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-top: 16px; }
+  .verdict { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; }
+  .verdict p { margin: 8px 0 0; flex: 1 1 320px; }
+  .pill { display: inline-block; border-radius: 999px; padding: 3px 12px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .good { background: var(--good-bg); color: var(--good); }
+  .warn { background: var(--warn-bg); color: var(--warn); }
+  .bad { background: var(--bad-bg); color: var(--bad); }
+  .none { background: var(--none-bg); color: var(--none); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 16px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .stat b { display: block; font-size: 26px; line-height: 1.2; }
+  .stat span { color: var(--muted); font-size: 14px; }
+  .arrow { color: var(--muted); font-weight: 400; }
+  .obj { padding: 14px 0; border-top: 1px solid var(--line); }
+  .obj:first-of-type { border-top: 0; padding-top: 0; }
+  .obj-head { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; }
+  .obj-head strong { flex: 1 1 300px; }
+  .change { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  blockquote { margin: 10px 0 0; padding: 8px 14px; border-left: 3px solid var(--accent); background: var(--bg); border-radius: 0 8px 8px 0; }
+  .note { color: var(--muted); font-size: 14px; margin: 8px 0 0; }
+  .label { font-size: 13px; color: var(--muted); margin: 12px 0 0; }
+  ul { margin: 0; padding-left: 20px; }
+  li + li { margin-top: 6px; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 20px; }
+  @media print { body { background: #fff; } .card, .stat { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+// Built-in SAMPLE report (same content as sample_report.json). Shown when no ?src= is given.
+window.REPORT = {
+  "sample": true,
+  "session": {
+    "learner_name": "Sample learner (synthetic)",
+    "topic": "Comparing Fractions",
+    "date": "2026-11-13",
+    "duration_seconds": 65,
+    "hint_count": 0
+  },
+  "outcome": "developing",
+  "summary": "Started out believing 1/3 and 1/4 are the same because each is one slice, then corrected it and explained why more slices means smaller slices. Has not yet tried a new pair of fractions alone.",
+  "objectives": [
+    {
+      "id": "denominator_meaning",
+      "label": "The bottom number tells how many equal pieces the whole is cut into",
+      "before": "not_observed",
+      "after": "not_observed",
+      "quote": null,
+      "quote_event_id": null,
+      "note": "The learner never said what the bottom number means."
+    },
+    {
+      "id": "same_whole",
+      "label": "A fair comparison needs wholes of the same size and equal pieces",
+      "before": "not_observed",
+      "after": "demonstrated_independent",
+      "quote": "Same size pizzas, so more slices means each slice is smaller.",
+      "quote_event_id": "e10",
+      "note": "Used the same-size pizzas as the reason, without being told to."
+    },
+    {
+      "id": "more_parts_smaller",
+      "label": "More pieces of the same whole means smaller pieces, so 1/4 is smaller than 1/3",
+      "before": "contradicted",
+      "after": "demonstrated_independent",
+      "quote": "Same size pizzas, so more slices means each slice is smaller.",
+      "quote_event_id": "e10",
+      "note": "First said the slices were the same. After seeing one on top of the other, gave the reason in their own words."
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "same_numerator_equal",
+      "label": "Thinks 1/3 and 1/4 are equal because both have one piece",
+      "quote": "It doesn't matter. You both get one slice, so it's the same.",
+      "quote_event_id": "e2",
+      "how_detected": "Said it aloud, then circled one slice in each pizza",
+      "resolved": true,
+      "resolution_quote": "Oh! The third is bigger.",
+      "resolution_event_id": "e10"
+    }
+  ],
+  "transfer": {
+    "attempted": false,
+    "task": null,
+    "passed": null,
+    "quote": null
+  },
+  "next_steps": [
+    "Ask them to compare 1/6 and 1/8 with their own drawing and no help.",
+    "Ask what the bottom number of a fraction means; they have not put that into words yet."
+  ]
+};
+</script>
+<script>
+const STATUS = {
+  demonstrated_independent: ["Explained on their own", "good"],
+  demonstrated_assisted: ["Explained with help", "warn"],
+  partial: ["Partly explained", "warn"],
+  contradicted: ["Got it wrong", "bad"],
+  not_observed: ["Not shown yet", "none"]
+};
+const OUTCOME = {
+  mastery_demonstrated: ["Understands it", "good"],
+  developing: ["Getting there", "warn"],
+  more_evidence_needed: ["Not enough to tell yet", "none"]
+};
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pill = (map, key) => {
+  const [text, cls] = map[key] || [key, "none"];
+  return `<span class="pill ${cls}">${esc(text)}</span>`;
+};
+const shown = s => s === "demonstrated_independent" || s === "demonstrated_assisted";
+
+function render(r) {
+  const objs = r.objectives || [], mis = r.misconceptions || [], t = r.transfer || {}, s = r.session || {};
+  const before = objs.filter(o => shown(o.before)).length;
+  const after = objs.filter(o => shown(o.after)).length;
+  const fixed = mis.filter(m => m.resolved).length;
+  const mins = s.duration_seconds ? `${Math.floor(s.duration_seconds / 60)}m ${s.duration_seconds % 60}s` : "";
+  const transferText = !t.attempted ? "Not tried" : t.passed ? "Passed" : "Not passed";
+
+  document.getElementById("app").innerHTML = `
+    <header>
+      <h1>${esc(s.learner_name || "Learner")}: ${esc(s.topic || "")}</h1>
+      <div class="meta">${esc([s.date, mins].filter(Boolean).join(" · "))}</div>
+    </header>
+    ${r.sample ? `<div class="sample">Sample report built from a scripted, synthetic session. Not a real student.</div>` : ""}
+
+    <section class="card verdict">
+      <div>${pill(OUTCOME, r.outcome)}</div>
+      <p>${esc(r.summary)}</p>
+    </section>
+
+    <section class="stats">
+      <div class="stat"><b>${before} <span class="arrow">→</span> ${after} of ${objs.length}</b><span>ideas explained, first try → end of session</span></div>
+      <div class="stat"><b>${fixed} of ${mis.length}</b><span>misconceptions corrected by the student</span></div>
+      <div class="stat"><b>${esc(transferText)}</b><span>new problem, solved alone</span></div>
+      <div class="stat"><b>${esc(s.hint_count ?? 0)}</b><span>hints used</span></div>
+    </section>
+
+    <section class="card">
+      <h2>What the student could explain</h2>
+      ${objs.map(o => `
+        <div class="obj">
+          <div class="obj-head">
+            <strong>${esc(o.label || o.id)}</strong>
+            <span class="change">${o.before !== o.after ? `${pill(STATUS, o.before)}<span class="arrow">→</span>` : ""}${pill(STATUS, o.after)}</span>
+          </div>
+          ${o.quote ? `<blockquote>“${esc(o.quote)}”</blockquote>` : ""}
+          ${o.note ? `<p class="note">${esc(o.note)}</p>` : ""}
+        </div>`).join("")}
+    </section>
+
+    <section class="card">
+      <h2>Misconceptions</h2>
+      ${mis.length ? mis.map(m => `
+        <div class="obj">
+          <div class="obj-head">
+            <strong>${esc(m.label || m.id)}</strong>
+            <span class="pill ${m.resolved ? "good" : "bad"}">${m.resolved ? "Corrected" : "Still there"}</span>
+          </div>
+          <p class="label">What the student said${m.how_detected ? ` (${esc(m.how_detected)})` : ""}</p>
+          <blockquote>“${esc(m.quote)}”</blockquote>
+          ${m.resolution_quote ? `<p class="label">After working through it</p><blockquote>“${esc(m.resolution_quote)}”</blockquote>` : ""}
+        </div>`).join("") : `<p class="note">None came up in this session.</p>`}
+    </section>
+
+    ${t.attempted ? `
+    <section class="card">
+      <h2>New problem, solved alone</h2>
+      <div class="obj-head"><strong>${esc(t.task)}</strong>
+        <span class="pill ${t.passed ? "good" : "bad"}">${t.passed ? "Passed" : "Not passed"}</span></div>
+      ${t.quote ? `<blockquote>“${esc(t.quote)}”</blockquote>` : ""}
+    </section>` : ""}
+
+    <section class="card">
+      <h2>What to do next</h2>
+      <ul>${(r.next_steps || []).map(n => `<li>${esc(n)}</li>`).join("")}</ul>
+    </section>
+
+    <footer>Quotes are the student's own words from the session. This is feedback from one short session, not a grade.</footer>`;
+}
+
+const src = new URLSearchParams(location.search).get("src");
+if (src) fetch(src).then(r => r.json()).then(render).catch(() => render(window.REPORT));
+else if (window.REPORT) render(window.REPORT);
+else document.getElementById("app").textContent = "No report data found.";
+</script>
+</body>
+</html>

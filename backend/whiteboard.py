@@ -125,7 +125,7 @@ def apply_commands(board: dict, commands: list, source: str, source_event_id: st
     elif any(isinstance(c, (MoveElement, EditLabel)) for c in commands): description = f'{actor} edited the diagram'
     if any(isinstance(c, ClearBoard) for c in commands):
         description = f'{actor} cleared the board' + (' and drew a new diagram' if any(isinstance(c, (CreateBar, CreateDiagram, CreateGraph)) for c in commands) else '')
-    result['last_action'] = {'source': source, 'description': description}
+    result['last_action'] = {'source': source, 'description': description, 'source_event_id':source_event_id}
     return result
 
 

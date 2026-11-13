@@ -1,0 +1,63 @@
+{
+  "sample": true,
+  "session": {
+    "learner_name": "Sample learner (synthetic)",
+    "topic": "Comparing Fractions",
+    "date": "2026-11-13",
+    "duration_seconds": 65,
+    "hint_count": 0
+  },
+  "outcome": "developing",
+  "summary": "Started out believing 1/3 and 1/4 are the same because each is one slice, then corrected it and explained why more slices means smaller slices. Has not yet tried a new pair of fractions alone.",
+  "objectives": [
+    {
+      "id": "denominator_meaning",
+      "label": "The bottom number tells how many equal pieces the whole is cut into",
+      "before": "not_observed",
+      "after": "not_observed",
+      "quote": null,
+      "quote_event_id": null,
+      "note": "The learner never said what the bottom number means."
+    },
+    {
+      "id": "same_whole",
+      "label": "A fair comparison needs wholes of the same size and equal pieces",
+      "before": "not_observed",
+      "after": "demonstrated_independent",
+      "quote": "Same size pizzas, so more slices means each slice is smaller.",
+      "quote_event_id": "e10",
+      "note": "Used the same-size pizzas as the reason, without being told to."
+    },
+    {
+      "id": "more_parts_smaller",
+      "label": "More pieces of the same whole means smaller pieces, so 1/4 is smaller than 1/3",
+      "before": "contradicted",
+      "after": "demonstrated_independent",
+      "quote": "Same size pizzas, so more slices means each slice is smaller.",
+      "quote_event_id": "e10",
+      "note": "First said the slices were the same. After seeing one on top of the other, gave the reason in their own words."
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "same_numerator_equal",
+      "label": "Thinks 1/3 and 1/4 are equal because both have one piece",
+      "quote": "It doesn't matter. You both get one slice, so it's the same.",
+      "quote_event_id": "e2",
+      "how_detected": "Said it aloud, then circled one slice in each pizza",
+      "resolved": true,
+      "resolution_quote": "Oh! The third is bigger.",
+      "resolution_event_id": "e10"
+    }
+  ],
+  "transfer": {
+    "attempted": false,
+    "task": null,
+    "passed": null,
+    "quote": null
+  },
+  "next_steps": [
+    "Ask them to compare 1/6 and 1/8 with their own drawing and no help.",
+    "Ask what the bottom number of a fraction means; they have not put that into words yet."
+  ]
+}

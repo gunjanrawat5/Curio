@@ -1,0 +1,4 @@
+import Link from 'next/link';
+export default function Brand(){
+ return <Link className="brand" href="/" aria-label="Curio home"><span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="m11 7-3-5m12 5 3-5" stroke="#252b21" strokeWidth="2" strokeLinecap="round"/><circle cx="8" cy="2" r="2" fill="#f04335"/><circle cx="23" cy="2" r="2" fill="#f04335"/><path d="M6 8 24 9q4 0 4 4v13q0 4-4 4L6 29q-3 0-3-4V12q0-4 3-4Z" fill="#1065a6" stroke="#252b21" strokeWidth="2"/><rect x="6" y="12" width="18" height="13" rx="4" fill="#d5d8dd"/><circle cx="11" cy="18" r="4" stroke="#b18225" strokeWidth="1.4"/><circle cx="20" cy="18" r="4" stroke="#b18225" strokeWidth="1.4"/><path d="M15 18h1m-5-1v3m8-3v3" stroke="#604b24" strokeWidth="1.5" strokeLinecap="round"/></svg></span>curio</Link>;
+}

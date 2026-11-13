@@ -1,6 +1,8 @@
 # Curio
 
-A curious little TV you teach with words and drawings. Kid-friendly TeachBack AI, starting with fractions.
+Curio is a little TV who once knew everything—until a few loose screws scrambled his memories. Help him rediscover math with your words, voice and drawings. Fractions are the first demo; physics and other subjects are future adventures.
+
+The child is Curio’s teacher and memory helper. He asks curious questions, connects explanations back to the child’s words, and celebrates ideas clicking into place. His forgetfulness is playful fiction: math stays accurate, session context is retained, and there is no mastery score implied. See the [character guide](docs/CURIO_CHARACTER.md).
 
 ## Setup
 
@@ -82,7 +84,7 @@ Try “draw a right triangle with labeled vertices”, “draw a number line fro
 
 Function graphs are sampled on the backend using an allowlisted expression interpreter: `x`, `pi`, `e`, arithmetic, constant powers from -12 to 12, and `sin`, `cos`, `tan`, `sqrt`, `abs`, `log`, `exp`. Model-generated code is never executed. Plots contain 401 samples with breaks at undefined/offscreen points; this is a finite visualization, not an exact symbolic graph. One general diagram or four fraction bars fit at once; Curio can clear and replace the board when you ask for a new diagram. When you request a fresh drawing, Curio announces the clear and replaces the old board. Shading, labeling, movement and explicit additive requests retain existing content. 3D scenes and arbitrary mathematical notation are outside this drawing vocabulary. Geometry is illustrative and not a measured proof.
 
-If Curio says it cannot draw during a challenge, click **Back to exploring** in the practice banner above the chat. This explicitly ends independent practice and restores drawing and hints while preserving the session history; it does not mark the challenge as passed. **New puzzle** starts a fresh practice attempt.
+Independent-practice controls are currently removed from the interface. Older practice sessions return to exploration automatically when opened, preserving their historical messages. **New conversation** starts a separate saved session from the workspace or a report.
 
 Ask “clear the board”, “erase this and draw a triangle”, or “now draw a number line instead” to start fresh. Curio emits a validated `clear_whiteboard` followed by the creation command in one atomic batch. **Undo diagram** restores the preceding diagram and any cleared pen strokes still available in the current tab. Strokes drawn after submitting a request are retained, and retrying a completed clear does not erase them again. Independent practice continues to block AI drawing and clearing; use **Back to exploring** first.
 
@@ -92,7 +94,7 @@ Draw with the pen, optionally type a question such as “what did I circle?”, 
 
 Curio references visible marks and asks a focused question. Low-confidence or ungrounded observations produce a clarification request. A small status indicates whether the drawing changed since the last shared snapshot. Vision cannot change the board and never awards mastery. In independent practice it may describe the sketch and ask for the learner’s reasoning without supplying a solution.
 
-Snapshot requests validate PNG format, dimensions, size (2 MB), canvas revision and sketch identity. Retries are idempotent, and stale snapshots are rejected. Raw images are sent transiently to Gemini and are not stored in SQLite; the session stores image hashes, revision IDs, observations, uncertainty and the resulting conversation. Current sketch observations are supplied to later chat turns only if both the diagram revision and freehand-content hash still match.
+Snapshot requests validate PNG format, dimensions, size (2 MB), canvas revision and sketch identity. Retries are idempotent, and stale snapshots are rejected. Shared sketch PNGs are sent to Gemini and now retained locally in SQLite for conversation reports, alongside image hashes, revision IDs, observations, uncertainty and the resulting conversation. Earlier sketch images that were not retained cannot be recovered. Current sketch observations are supplied to later chat turns only if both the diagram revision and freehand-content hash still match.
 
 Set `GEMINI_VISION_MODEL` optionally to choose a separate image-capable model; otherwise it uses `GEMINI_MODEL`. Install updated backend requirements and restart if needed.
 
@@ -100,7 +102,7 @@ Set `GEMINI_VISION_MODEL` optionally to choose a separate image-capable model; o
 
 Start a teaching session, then click **Talk to Curio** and allow microphone access. Speak naturally; live transcripts appear in the same conversation and Curio responds with streamed native Gemini audio. Spoken drawing requests such as “draw one third and one fourth” use the same validated whiteboard commands as text. Curio’s avatar shows listening and speaking states.
 
-The microphone button mutes/unmutes, the square stops current playback, and the phone button ends voice and releases the microphone. Speaking over Curio uses the provider’s voice-activity interruption handling. End voice to send typed messages, share a new sketch, or switch practice modes; typed drafts remain editable during voice. Reconnect with Talk to Curio after a disconnect. The backend seeds the saved conversation and current diagrams on each connection, so previous text and voice turns remain available. Voice conversations stay active for up to 14 minutes, then can be restarted.
+The microphone button mutes/unmutes, the square stops current playback, and the phone button ends voice and releases the microphone. Speaking over Curio uses the provider’s voice-activity interruption handling. End voice to send typed messages, share a new sketch, or start a new conversation; typed drafts remain editable during voice. Reconnect with Talk to Curio after a disconnect. The backend seeds the saved conversation and current diagrams on each connection, so previous text and voice turns remain available. Voice conversations stay active for up to 14 minutes, then can be restarted.
 
 Configuration (optional in root `.env`):
 
@@ -114,3 +116,17 @@ The browser connects to FastAPI’s session WebSocket; the backend connects to G
 Use a current browser with AudioWorklet, microphone support and localhost/HTTPS. Microphone denial or model/network errors leave text available. Voice cannot inspect new sketches automatically: end voice and use Show Curio. Previously shared snapshots are treated as historical in the voice connection. Evaluation remains deferred.
 
 Voice connections have a local 14-minute cap. A normal cap or provider rotation now shows a reconnect notice instead of a configuration error. Provider close frames distinguish quota/rate limits, expiry, permissions, service failures and network loss. Unexpected disconnections log only a category, close code, elapsed seconds and exception type; the latest 20 safe diagnostic records are saved with the session. These records do not contain API keys, raw provider error payloads or audio. The existing lesson cap is 120 conversation messages, separate from a voice connection's duration. Automatic session resumption is not implemented yet.
+
+## Character configuration
+
+`shared/curio-persona.json` holds the shared story and product copy used by React and FastAPI. `backend/persona.py` defines the behavior contract reused by text, native voice, and visual discussion. New sessions use the story greeting; existing sessions retain their transcript and adopt the new persona on subsequent replies. Restart the backend/reconnect voice after a persona change. The **Meet Curio** button opens his story without adding persistent helper copy to the workspace.
+
+## Conversation reports
+
+Open **Reports** in the workspace header, or visit `/reports`, to browse all saved conversations. Search matches the saved chat text; the list supports pagination. Each `/reports/<session-id>` page contains a session result/review state, the child’s exact contributions with Curio’s follow-ups, hints and practice context, the full text/voice/sketch chat history, and a drawings/sketches archive. There is no automated understanding score or mastery judgment yet.
+
+New diagram states are archived automatically on each board revision, including clear and undo. New shared sketches are retained locally as PNGs for reports; this intentionally updates the earlier transient-image behavior. Older sessions can expose recoverable board states and sketch observations, but missing historic images and discarded drawings are not recreated. Voice outputs appear as transcripts; audio recordings are not retained. All report reads are deterministic and use no Gemini quota.
+
+Use **New conversation** to start a separate saved conversation or **Continue with Curio** to resume a report’s session. End active voice before navigating away. The report content scrolls within the viewport; the teaching workspace remains fixed.
+
+The report sidebar’s independent-practice card has been replaced with **New conversation**. The workspace offers the same action beside the hint button. Creating a new session leaves previous reports intact; evaluation and practice UI remain deferred.

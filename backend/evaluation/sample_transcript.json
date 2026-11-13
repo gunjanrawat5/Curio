@@ -1,0 +1,21 @@
+{
+  "session_id": "sample_001",
+  "topic_id": "fractions_compare_intro",
+  "learner_name": "Sample learner (synthetic)",
+  "started_at": "2026-11-13T15:00:00-08:00",
+  "ended_at": "2026-11-13T15:01:20-08:00",
+  "events": [
+    { "id": "e1", "actor": "pip", "modality": "voice", "text": "I traded my one third of the pizza for my friend's one fourth, because four is bigger than three. Did I get a good deal?" },
+    { "id": "e2", "actor": "learner", "modality": "voice", "text": "It doesn't matter. You both get one slice, so it's the same." },
+    { "id": "e3", "actor": "pip", "modality": "voice", "text": "Can you show me? I'll draw the pizzas." },
+    { "id": "e4", "actor": "pip", "modality": "whiteboard", "text": "Drew two pizzas of the same size: one cut into 3 equal slices, one cut into 4 equal slices." },
+    { "id": "e5", "actor": "learner", "modality": "sketch", "text": "Circled one slice of the thirds pizza and one slice of the fourths pizza by hand." },
+    { "id": "e6", "actor": "learner", "modality": "voice", "text": "See, one slice and one slice." },
+    { "id": "e7", "actor": "pip", "modality": "voice", "text": "I see you circled one slice in each pizza. But they don't look the same size. Let me put one on top of the other." },
+    { "id": "e9", "actor": "pip", "modality": "whiteboard", "text": "Placed the 1/4 slice on top of the 1/3 slice. The 1/4 slice is smaller." },
+    { "id": "e10", "actor": "learner", "modality": "voice", "text": "Oh! The third is bigger. Same size pizzas, so more slices means each slice is smaller." },
+    { "id": "e11", "actor": "pip", "modality": "voice", "text": "So I gave away the bigger slice! I want my pizza back." }
+  ],
+  "hints": [],
+  "transfer": null
+}

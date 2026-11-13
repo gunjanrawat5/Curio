@@ -9,10 +9,12 @@ from pathlib import Path
 from uuid import UUID, uuid4
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from backend.store import SessionStore, event, CHALLENGE
+from backend.persona import PROFILE
+from backend.reports import report_summary, build_report
 from backend.gemini import generate_reply, ProviderError
 from backend.vision import CanvasSnapshot, analyze_sketch, grounded_analysis
 from backend.whiteboard import CreateBar, ShadePart, DiagramCommand, BoardError, apply_commands
@@ -58,7 +60,7 @@ def get_session(session_id: UUID):
     return session
 
 def public(session):
-    result = {k: v for k, v in session.items() if k != 'requests'}
+    result = {k: v for k, v in session.items() if k not in ('requests','artifacts')}
     result['whiteboard'] = {k: v for k, v in session['whiteboard'].items() if k != 'history'}
     result['whiteboard']['can_undo'] = bool(session['whiteboard']['history'])
     return result
@@ -75,7 +77,7 @@ def already_done(session, request_id, fingerprint):
 @app.get('/health')
 def health():
     key = os.getenv('GEMINI_API_KEY', '').strip()
-    return {'status': 'ok', 'mode': 'gemini', 'provider_configured': bool(key and key != 'your_gemini_api_key_here'), 'evaluation_available': False}
+    return {'status': 'ok', 'mode': 'gemini', 'provider_configured': bool(key and key != 'your_gemini_api_key_here'), 'evaluation_available': bool(key and key != 'your_gemini_api_key_here')}
 
 @app.get('/topics')
 def topics():
@@ -138,7 +140,7 @@ async def hint(session_id: UUID, action: Action):
             return public(session)
         if session['phase'] == 'challenge':
             raise HTTPException(409, 'Hints are off during independent practice.')
-        hints = ['Imagine two identical chocolate bars. What should stay the same to make a fair comparison?', 'Try dividing one whole into three equal pieces, and another into four. Compare just one piece.', 'More equal pieces of the same whole means each piece is smaller. Can you explain that in your own words?']
+        hints = PROFILE['hints']
         session['messages'].append(event('curio', hints[min(session['hints'], 2)], 'hint'))
         session['hints'] += 1
         session['requests'][str(action.request_id)] = 'hint'
@@ -186,7 +188,7 @@ async def edit_whiteboard(session_id: UUID, action: BoardAction):
             board['bars'] = []
             board['diagrams'] = []
             board['revision'] += 1
-            board['last_action'] = {'source': 'learner', 'description': 'You cleared the diagrams'}
+            board['last_action'] = {'source': 'learner', 'description': 'You cleared the diagrams', 'source_event_id':str(action.request_id)}
         elif action.operation == 'undo':
             if not board['history']:
                 raise HTTPException(409, 'No diagram actions to undo.')
@@ -198,7 +200,7 @@ async def edit_whiteboard(session_id: UUID, action: BoardAction):
             board['diagrams'] = previous.get('diagrams', [])
             board['last_clear_id'] = previous.get('last_clear_id')
             board['revision'] += 1
-            board['last_action'] = {'source': 'learner', 'description': 'You undid the last diagram action', 'operation': 'undo'}
+            board['last_action'] = {'source': 'learner', 'description': 'You undid the last diagram action', 'source_event_id':str(action.request_id), 'operation': 'undo'}
         session['whiteboard'] = board
         session['requests'][str(action.request_id)] = fingerprint
         app.state.store.save(session)
@@ -215,7 +217,7 @@ async def explore(session_id: UUID, action: Action):
             return public(session)
         if session['phase'] != 'teaching':
             session['phase'] = 'teaching'
-            session['messages'].append(event('curio', "We're back to exploring math together! I can help draw again. What would you like to put on the board?", 'explore'))
+            session['messages'].append(event('curio', PROFILE['explore'], 'explore'))
         session['requests'][str(action.request_id)] = 'explore'
         app.state.store.save(session)
         return public(session)
@@ -251,7 +253,7 @@ async def show_sketch(session_id: UUID, turn: SketchTurn):
         session.setdefault('sketches', []).append(observed)
         session['messages'].extend([learner, event('curio', analysis.reply, 'sketch_reply')])
         session['requests'][str(turn.request_id)] = fingerprint
-        app.state.store.save(session)
+        app.state.store.save(session,snapshot_image=(image_hash,image))
         return public(session)
 
 
@@ -259,3 +261,41 @@ async def show_sketch(session_id: UUID, turn: SketchTurn):
 async def live_voice(websocket: WebSocket, session_id: UUID):
     from backend.live import handle_voice
     await handle_voice(websocket, app, session_id)
+
+
+@app.get('/reports')
+def list_reports(limit:int=Query(default=30,ge=1,le=100),offset:int=Query(default=0,ge=0),q:str=Query(default='',max_length=200)):
+    sessions=app.state.store.list_sessions()
+    if q.strip():
+        query=q.strip().casefold()
+        sessions=[s for s in sessions if any(query in m['text'].casefold() for m in s['messages'])]
+    return {'reports':[report_summary(session,session['id'] in app.state.voice_sessions) for session in sessions[offset:offset+limit]],
+        'total':len(sessions),'has_more':offset+limit<len(sessions)}
+
+@app.post('/reports/{session_id}/evaluate')
+async def evaluate_report(session_id:UUID):
+    from backend.evaluator import evaluate
+    async with lock(session_id):
+        require_text_mode(session_id)
+        session=get_session(session_id)
+        if not any(m['role']=='you' for m in session['messages']):
+            raise HTTPException(422, 'Record a learner contribution before evaluating.')
+        if session.get('evaluation_message_id') != session['messages'][-1]['id']:
+            try: session['evaluation']=await evaluate(session)
+            except ProviderError as exc: raise HTTPException(exc.status, exc.message) from None
+            session['evaluation_message_id']=session['messages'][-1]['id']
+            app.state.store.save(session)
+        return build_report(session,app.state.store.image_hashes())
+
+@app.get('/reports/{session_id}')
+def read_report(session_id:UUID):
+    session=get_session(session_id)
+    return build_report(session,app.state.store.image_hashes(),str(session_id) in app.state.voice_sessions)
+
+@app.get('/reports/{session_id}/sketches/{event_id}')
+def report_sketch(session_id:UUID,event_id:UUID):
+    session=get_session(session_id)
+    sketch=next((s for s in session.get('sketches',[]) if s['event_id']==str(event_id)),None)
+    image=app.state.store.get_image(sketch['image_sha256']) if sketch else None
+    if image is None:raise HTTPException(404,'This sketch image was not saved. Its observations may still be in the report.')
+    return Response(image,media_type='image/png',headers={'Cache-Control':'private, max-age=3600','X-Content-Type-Options':'nosniff'})

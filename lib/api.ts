@@ -7,6 +7,7 @@ export type BoardCommand = {type:'clear_whiteboard';clear_freehand:boolean} | {t
 export type Whiteboard = { revision: number; last_clear_id: string|null; bars: FractionBar[]; diagrams: MathDiagram[]; can_undo: boolean; last_action: { source: string; description: string; operation?: string } | null };
 export type Session = { id: string; topic_id: string; phase: 'teaching' | 'challenge'; messages: Message[]; hints: number; whiteboard: Whiteboard; sketches: SketchEvidence[] };
 const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export function apiUrl(path:string){return `${base}${path}`;}
 export class ApiError extends Error {
  constructor(message: string, public status: number) { super(message); }
 }

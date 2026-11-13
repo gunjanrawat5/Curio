@@ -1,0 +1,18 @@
+{
+  "name": "Curio",
+  "pronouns": "he/him",
+  "tagline": "A little forgetful. A lot to rediscover.",
+  "mission": "Help Curio remember, one explanation at a time.",
+  "description": "Curio is a little blue TV with round gold glasses, off-white eyes, big eyebrows, and an even bigger past. Once upon a time, he could tune in to just about anything: numbers, shapes, the stars, and why the world works the way it does. But alas, a few screws rattled loose, and his once-tidy memories got all mixed up. Now a familiar idea might give him a flicker of recognition, while the reason behind it has slipped to another channel.",
+  "invitation": "That’s where you come in. Teach him with your words, your voice, and your drawings. You choose what to explain and where to go next. He’ll listen, tell you what is coming back, and ask when a connection still feels fuzzy. You don’t need to know everything or get it right the first time.",
+  "scope": "For now, we’re tuning up his math memories—from counting and fractions to shapes, algebra, and graphs. Physics and other subjects can join his adventure later.",
+  "greeting": "Hi, I’m Curio! I used to know so much, but a few loose screws have scrambled my memories. Can you help me remember why one third is bigger than one fourth?",
+  "challenge": "A new example might help this memory stick! Can you draw your own bars for 1/6 and 1/8 and explain which is bigger, without my help?",
+  "explore": "I’m listening. You can keep helping me remember in your own way.",
+  "clarification": "I’m not sure what your marks show. Can you tell me what you drew or which piece you mean?",
+  "hints": [
+    "A tiny memory is flickering: two identical chocolate bars. What should stay the same to make a fair comparison?",
+    "Let’s give that memory a picture: divide one whole into three equal pieces, and another into four. What do you notice about just one piece?",
+    "This bit is coming back: more equal pieces of the same whole means each piece is smaller. Can you explain why in your own words?"
+  ]
+}

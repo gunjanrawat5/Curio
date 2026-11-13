@@ -43,7 +43,7 @@ def test_part_references_must_be_in_bounds():
     seen.observations[0].part_index=2
     assert not grounded_analysis(seen,board).needs_clarification
 
-def test_sketch_route_is_idempotent_preserves_drawing_and_never_saves_pixels(client,monkeypatch):
+def test_sketch_route_is_idempotent_preserves_drawing_and_keeps_pixels_out_of_session_json(client,monkeypatch):
     seen=[]
     async def inspect(image,snapshot,board,messages,phase,question):
         seen.append((image,snapshot,phase,question));return analysis()

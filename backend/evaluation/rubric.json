@@ -1,0 +1,50 @@
+{
+  "topic_id": "fractions_compare_intro",
+  "title": "Comparing Fractions",
+  "audience": "ages 8-12",
+  "objectives": [
+    {
+      "id": "denominator_meaning",
+      "label": "The bottom number tells how many equal pieces the whole is cut into",
+      "demonstrated_when": "Learner says in their own words that the denominator is the number of equal pieces of the whole.",
+      "not_enough": "Naming the numbers without saying what they mean."
+    },
+    {
+      "id": "same_whole",
+      "label": "A fair comparison needs wholes of the same size and equal pieces",
+      "demonstrated_when": "Learner states that the bars (wholes) are the same size, or that the pieces within a bar must be equal.",
+      "not_enough": "Comparing pieces without mentioning the whole."
+    },
+    {
+      "id": "more_parts_smaller",
+      "label": "More pieces of the same whole means smaller pieces, so 1/4 is smaller than 1/3",
+      "demonstrated_when": "Learner links more pieces to smaller pieces and concludes 1/3 is bigger than 1/4.",
+      "not_enough": "\"It's cut into more pieces\" alone, or the right answer with no reason."
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "bigger_denominator_bigger",
+      "label": "Thinks 1/4 is bigger than 1/3 because 4 is bigger than 3"
+    },
+    {
+      "id": "same_numerator_equal",
+      "label": "Thinks 1/3 and 1/4 are equal because both have one piece"
+    },
+    {
+      "id": "unequal_parts",
+      "label": "Calls unequal pieces thirds or fourths"
+    }
+  ],
+  "transfer_challenges": [
+    { "id": "compare_1_6_1_8", "task": "Which is bigger, 1/6 or 1/8?", "expected_larger": "1/6" },
+    { "id": "compare_2_3_2_5", "task": "Which is bigger, 2/3 or 2/5?", "expected_larger": "2/3" }
+  ],
+  "statuses": [
+    "not_observed",
+    "partial",
+    "contradicted",
+    "demonstrated_assisted",
+    "demonstrated_independent"
+  ]
+}
