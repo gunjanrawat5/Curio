@@ -1,0 +1,3 @@
+export default function Curio({ thinking = false }: { thinking?: boolean }) {
+ return <div className={`curio ${thinking ? 'thinking' : ''}`} role="img" aria-label="Curio, a friendly yellow TV with blinking eyes and big curious eyebrows"><div className="antenna left"/><div className="antenna right"/><div className="tv"><div className="screen"><div className="brow bleft"/><div className="brow bright"/><div className="eye eleft"/><div className="eye eright"/><div className="smile"/><span className="cheek cleft"/><span className="cheek cright"/></div><div className="tv-controls"><i/><i/><span>•••</span></div></div><div className="foot fleft"/><div className="foot fright"/></div>;
+}
