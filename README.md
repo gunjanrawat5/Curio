@@ -66,7 +66,7 @@ Backend tests use a temporary database and mocked Gemini responses; they do not 
 
 ## Product and implementation
 
-Read [Curio product direction](docs/PRODUCT_SPEC.md) and the [original TeachBack spec](docs/TeachBack_AI_Product_Spec_v1.1.md). Implemented: animated avatar, drawing workspace, editable fraction examples, durable backend sessions, Gemini text dialogue, hint tracking, independent practice and a practice journal. Live voice, independent evaluation and mastery reporting remain milestones. Curio does not award mastery.
+Read [Curio product direction](docs/PRODUCT_SPEC.md) and the [original TeachBack spec](docs/TeachBack_AI_Product_Spec_v1.1.md). Implemented: animated avatar, drawing workspace, editable fraction examples, durable backend sessions, Gemini text dialogue, hint tracking, independent practice and a practice journal. Independent evaluation and mastery reporting remain milestones; live voice is implemented. Curio does not award mastery.
 
 ## Editable whiteboard actions
 
@@ -95,3 +95,22 @@ Curio references visible marks and asks a focused question. Low-confidence or un
 Snapshot requests validate PNG format, dimensions, size (2 MB), canvas revision and sketch identity. Retries are idempotent, and stale snapshots are rejected. Raw images are sent transiently to Gemini and are not stored in SQLite; the session stores image hashes, revision IDs, observations, uncertainty and the resulting conversation. Current sketch observations are supplied to later chat turns only if both the diagram revision and freehand-content hash still match.
 
 Set `GEMINI_VISION_MODEL` optionally to choose a separate image-capable model; otherwise it uses `GEMINI_MODEL`. Install updated backend requirements and restart if needed.
+
+## Live voice
+
+Start a teaching session, then click **Talk to Curio** and allow microphone access. Speak naturally; live transcripts appear in the same conversation and Curio responds with streamed native Gemini audio. Spoken drawing requests such as “draw one third and one fourth” use the same validated whiteboard commands as text. Curio’s avatar shows listening and speaking states.
+
+The microphone button mutes/unmutes, the square stops current playback, and the phone button ends voice and releases the microphone. Speaking over Curio uses the provider’s voice-activity interruption handling. End voice to send typed messages, share a new sketch, or switch practice modes; typed drafts remain editable during voice. Reconnect with Talk to Curio after a disconnect. The backend seeds the saved conversation and current diagrams on each connection, so previous text and voice turns remain available. Voice conversations stay active for up to 14 minutes, then can be restarted.
+
+Configuration (optional in root `.env`):
+
+```dotenv
+GEMINI_LIVE_MODEL=gemini-3.8-live
+GEMINI_LIVE_VOICE=Aoede
+```
+
+The browser connects to FastAPI’s session WebSocket; the backend connects to Gemini Live. The permanent API key never goes to the browser. Audio uses microphone-only PCM16 at 16 kHz and streamed 24 kHz output, following the [Gemini Live SDK interface](https://ai.google.dev/gemini-api/docs/live-api/get-started-sdk). Audio is transient; actual input/output transcripts and diagram changes persist in SQLite. Interrupted output is labeled in stored events. While voice is connected, other mutation endpoints are blocked for that session to preserve ordering. Origin checks use FRONTEND_ORIGINS, and the local service still assumes a single worker.
+
+Use a current browser with AudioWorklet, microphone support and localhost/HTTPS. Microphone denial or model/network errors leave text available. Voice cannot inspect new sketches automatically: end voice and use Show Curio. Previously shared snapshots are treated as historical in the voice connection. Evaluation remains deferred.
+
+Voice connections have a local 14-minute cap. A normal cap or provider rotation now shows a reconnect notice instead of a configuration error. Provider close frames distinguish quota/rate limits, expiry, permissions, service failures and network loss. Unexpected disconnections log only a category, close code, elapsed seconds and exception type; the latest 20 safe diagnostic records are saved with the session. These records do not contain API keys, raw provider error payloads or audio. The existing lesson cap is 120 conversation messages, separate from a voice connection's duration. Automatic session resumption is not implemented yet.

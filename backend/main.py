@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from backend.store import SessionStore, event, CHALLENGE
@@ -23,6 +23,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / '.env')
 async def lifespan(app: FastAPI):
     app.state.store = SessionStore()
     app.state.locks = {}
+    app.state.voice_sessions = set()
     yield
 
 app = FastAPI(title='Curio API', version='0.2.0', lifespan=lifespan)
@@ -45,6 +46,10 @@ class BoardAction(Action):
     canvas_revision: int = Field(ge=0)
     operation: Literal['edit', 'clear', 'undo']
     commands: list[DiagramCommand] = Field(default_factory=list, max_length=8)
+
+def require_text_mode(session_id):
+    if str(session_id) in app.state.voice_sessions:
+        raise HTTPException(409, 'End the voice conversation before typing, sharing a sketch, or changing the lesson.')
 
 def get_session(session_id: UUID):
     session = app.state.store.get(str(session_id))
@@ -90,6 +95,7 @@ async def send_message(session_id: UUID, turn: Turn):
     if not text:
         raise HTTPException(422, 'Write an explanation first.')
     async with lock(session_id):
+        require_text_mode(session_id)
         session = get_session(session_id)
         fingerprint = 'message:' + text
         if already_done(session, turn.request_id, fingerprint):
@@ -126,6 +132,7 @@ async def send_message(session_id: UUID, turn: Turn):
 @app.post('/sessions/{session_id}/hints')
 async def hint(session_id: UUID, action: Action):
     async with lock(session_id):
+        require_text_mode(session_id)
         session = get_session(session_id)
         if already_done(session, action.request_id, 'hint'):
             return public(session)
@@ -141,6 +148,7 @@ async def hint(session_id: UUID, action: Action):
 @app.post('/sessions/{session_id}/challenge')
 async def challenge(session_id: UUID, action: Action):
     async with lock(session_id):
+        require_text_mode(session_id)
         session = get_session(session_id)
         if already_done(session, action.request_id, 'challenge'):
             return public(session)
@@ -156,6 +164,7 @@ async def challenge(session_id: UUID, action: Action):
 @app.post('/sessions/{session_id}/whiteboard')
 async def edit_whiteboard(session_id: UUID, action: BoardAction):
     async with lock(session_id):
+        require_text_mode(session_id)
         session = get_session(session_id)
         fingerprint = 'board:' + json.dumps(action.model_dump(mode='json', exclude={'request_id'}), sort_keys=True)
         if already_done(session, action.request_id, fingerprint):
@@ -200,6 +209,7 @@ async def edit_whiteboard(session_id: UUID, action: BoardAction):
 async def explore(session_id: UUID, action: Action):
     """Leave independent practice explicitly, retaining all prior evidence."""
     async with lock(session_id):
+        require_text_mode(session_id)
         session = get_session(session_id)
         if already_done(session, action.request_id, 'explore'):
             return public(session)
@@ -221,6 +231,7 @@ async def show_sketch(session_id: UUID, turn: SketchTurn):
     fingerprint = 'sketch:' + hashlib.sha256(json.dumps({'image': image_hash, 'canvas_revision': turn.snapshot.canvas_revision,
         'sketch_revision': turn.snapshot.sketch_revision, 'stroke_count': turn.snapshot.stroke_count, 'question': turn.question}, sort_keys=True).encode()).hexdigest()
     async with lock(session_id):
+        require_text_mode(session_id)
         session = get_session(session_id)
         if already_done(session, turn.request_id, fingerprint):
             return public(session)
@@ -242,3 +253,9 @@ async def show_sketch(session_id: UUID, turn: SketchTurn):
         session['requests'][str(turn.request_id)] = fingerprint
         app.state.store.save(session)
         return public(session)
+
+
+@app.websocket('/sessions/{session_id}/voice')
+async def live_voice(websocket: WebSocket, session_id: UUID):
+    from backend.live import handle_voice
+    await handle_voice(websocket, app, session_id)
