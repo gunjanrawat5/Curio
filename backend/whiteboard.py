@@ -129,22 +129,20 @@ def apply_commands(board: dict, commands: list, source: str, source_event_id: st
     return result
 
 
-def provider_reply_schema():
-    """Omit size bounds from the provider grammar; validate them in Pydantic.
+def simplify_provider_schema(schema):
+    """Keep semantic fields while avoiding nested grammar size multiplication."""
+    if isinstance(schema, list): return [simplify_provider_schema(item) for item in schema]
+    if not isinstance(schema, dict): return schema
+    result = {}
+    for key, value in schema.items():
+        if key in ('title', 'default', 'minimum', 'maximum', 'minLength', 'maxLength', 'minItems', 'maxItems'):
+            continue
+        if key in ('properties', '$defs'):
+            result[key] = {name: simplify_provider_schema(definition) for name, definition in value.items()}
+        else:
+            result[key] = simplify_provider_schema(value)
+    return result
 
-    Nested maxItems bounds multiply provider grammar states. Keep command-specific
-    required fields and alternatives, while enforcing all limits after generation.
-    """
-    def simplify(schema):
-        if isinstance(schema, list): return [simplify(item) for item in schema]
-        if not isinstance(schema, dict): return schema
-        result = {}
-        for key, value in schema.items():
-            if key in ('title', 'default', 'minimum', 'maximum', 'minLength', 'maxLength', 'minItems', 'maxItems'):
-                continue
-            if key in ('properties', '$defs'):
-                result[key] = {name: simplify(definition) for name, definition in value.items()}
-            else:
-                result[key] = simplify(value)
-        return result
-    return simplify(CurioReply.model_json_schema())
+
+def provider_reply_schema():
+    return simplify_provider_schema(CurioReply.model_json_schema())

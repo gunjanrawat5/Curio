@@ -24,7 +24,7 @@ class SessionStore:
         return sqlite3.connect(self.path, timeout=10)
 
     def create(self) -> dict:
-        session = {'id': str(uuid4()), 'topic_id': 'fractions_intro', 'phase': 'teaching', 'messages': [event('curio', GREETING)], 'hints': 0, 'requests': {}, 'whiteboard': empty_board()}
+        session = {'id': str(uuid4()), 'topic_id': 'fractions_intro', 'phase': 'teaching', 'messages': [event('curio', GREETING)], 'hints': 0, 'requests': {}, 'whiteboard': empty_board(), 'sketches': []}
         with self.connect() as db:
             db.execute('INSERT INTO sessions VALUES (?, ?)', (session['id'], json.dumps(session)))
         return session
@@ -35,6 +35,7 @@ class SessionStore:
         if not row:
             return None
         session = json.loads(row[0])
+        session.setdefault('sketches', [])
         session.setdefault('whiteboard', empty_board())
         session['whiteboard'].setdefault('diagrams', [])
         session['whiteboard'].setdefault('last_clear_id', None)

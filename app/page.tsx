@@ -1,19 +1,24 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Pencil, MousePointer2, Undo2, Lightbulb, ArrowRight, RotateCcw, Volume2, X, BookOpen } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUp, Pencil, MousePointer2, Undo2, Lightbulb, ArrowRight, RotateCcw, Volume2, X, BookOpen, Eye } from 'lucide-react';
 import Curio from '@/components/Curio';
 import MathDiagram from '@/components/MathDiagram';
 import { api, ApiError, type Session, type BoardCommand } from '@/lib/api';
+import { captureWhiteboard, sketchRevision, type CanvasSnapshot } from '@/lib/snapshot';
 import { clearSubmittedStrokes, restoreClearedStrokes, type Stroke } from '@/lib/strokes';
-type OutgoingMessage = { id: string; text: string; failed: boolean; strokeSnapshot: Stroke[] };
+type OutgoingMessage = { id: string; text: string; failed: boolean; strokeSnapshot: Stroke[]; snapshot?: CanvasSnapshot };
 export default function Home() {
- const [session,setSession]=useState<Session|null>(null), [text,setText]=useState(''), [strokes,setStrokes]=useState<Stroke[]>([]), [pen,setPen]=useState(true), [color,setColor]=useState('#8063cf'), [report,setReport]=useState(false), [thinking,setThinking]=useState(false), [loading,setLoading]=useState(true), [error,setError]=useState(''), [outgoing,setOutgoing]=useState<OutgoingMessage|null>(null), [boardBusy,setBoardBusy]=useState(false), [selectedElement,setSelectedElement]=useState<string|null>(null), [labelDraft,setLabelDraft]=useState('');
+ const [session,setSession]=useState<Session|null>(null), [text,setText]=useState(''), [strokes,setStrokes]=useState<Stroke[]>([]), [pen,setPen]=useState(true), [color,setColor]=useState('#8063cf'), [report,setReport]=useState(false), [thinking,setThinking]=useState(false), [loading,setLoading]=useState(true), [error,setError]=useState(''), [outgoing,setOutgoing]=useState<OutgoingMessage|null>(null), [boardBusy,setBoardBusy]=useState(false), [selectedElement,setSelectedElement]=useState<string|null>(null), [labelDraft,setLabelDraft]=useState(''), [analyzing,setAnalyzing]=useState(false);
  const svg=useRef<SVGSVGElement>(null), drawing=useRef(false), busy=useRef(false), pending=useRef<{key:string;id:string}|null>(null), conversation=useRef<HTMLDivElement>(null), composer=useRef<HTMLInputElement>(null);
+ const sharedStrokes=useRef<string|null>(null);
  const clearCursor=useRef<string|null>(null), clearedStrokes=useRef(new Map<string,Stroke[]>());
  const bars=session?.whiteboard.bars||[];
  const diagrams=session?.whiteboard.diagrams||[];
  const selected=diagrams.flatMap(d=>d.elements||[]).find(e=>e.id===selectedElement);
  const started=!!session, messages=session?.messages||[], hints=session?.hints||0, challenge=session?.phase==='challenge';
+ const serializedStrokes=useMemo(()=>JSON.stringify(strokes),[strokes]);
+ const latestSketch=session?.sketches?.at(-1);
+ const sketchChanged=!!latestSketch&&(latestSketch.canvas_revision!==session?.whiteboard.revision||serializedStrokes!==sharedStrokes.current);
  const canEdit=!!session&&!thinking&&!boardBusy&&!outgoing&&!challenge;
  const greeting='I know a little about fractions… but I get the pieces mixed up. Can you teach me why ⅓ is bigger than ¼?';
  function applySession(next:Session, strokeSnapshot:Stroke[]=[]){
@@ -45,13 +50,15 @@ export default function Home() {
   if(retry)pending.current={key,id:retry.id};
   else if(pending.current?.key!==key)pending.current={key,id:crypto.randomUUID()};
   const requestId=pending.current!.id;
+  if(retry?.snapshot){await sendSketch(retry.snapshot,answer,requestId,strokeSnapshot);return;}
   if(action==='messages'){
    setOutgoing({id:requestId,text:answer,failed:false,strokeSnapshot});
    if(!retry)setText('');
    composer.current?.focus();
   }
   try{
-   const next=await api<Session>(`/sessions/${session.id}/${action}`,{request_id:requestId,...(action==='messages'?{text:answer,canvas_revision:session.whiteboard.revision}:{})});
+   const sketch_revision=action==='messages'?await sketchRevision(strokeSnapshot):undefined;
+   const next=await api<Session>(`/sessions/${session.id}/${action}`,{request_id:requestId,...(action==='messages'?{text:answer,canvas_revision:session.whiteboard.revision,sketch_revision}:{})});
    applySession(next,strokeSnapshot);pending.current=null;
    if(action==='messages')setOutgoing(null);
    if(action==='challenge'){setStrokes([]);setPen(true)}
@@ -59,6 +66,29 @@ export default function Home() {
    setError((err as Error).message);
    if(action==='messages')setOutgoing({id:requestId,text:answer,failed:true,strokeSnapshot});
   }finally{busy.current=false;setThinking(false)}
+ }
+ async function sendSketch(snapshot:CanvasSnapshot, question:string, requestId:string, strokeSnapshot:Stroke[]){
+  setAnalyzing(true);setOutgoing({id:requestId,text:question,failed:false,strokeSnapshot,snapshot});
+  try{
+   const next=await api<Session>(`/sessions/${session!.id}/sketch`,{request_id:requestId,snapshot,question});
+   applySession(next);sharedStrokes.current=JSON.stringify(strokeSnapshot);setOutgoing(null);pending.current=null;
+   }catch(err){
+   setError((err as Error).message);
+   if(err instanceof ApiError&&err.status===409){
+    setOutgoing(null);setText(current=>current||question);pending.current=null;
+    try{applySession(await api<Session>(`/sessions/${session!.id}`))}catch{ /* Keep the original stale-snapshot error. */ }
+   }else setOutgoing({id:requestId,text:question,failed:true,strokeSnapshot,snapshot});
+  }
+  finally{busy.current=false;setThinking(false);setAnalyzing(false)}
+ }
+ async function showSketch(){
+  if(!session||!svg.current||busy.current||outgoing)return;
+  busy.current=true;setThinking(true);setAnalyzing(true);setError('');
+  const draft=text;const question=text.trim()||'Can you look at my drawing?';const capturedStrokes=strokes;setText('');
+  try{
+   const snapshot=await captureWhiteboard(svg.current,session.whiteboard.revision,capturedStrokes);
+   await sendSketch(snapshot,question,crypto.randomUUID(),capturedStrokes);
+  }catch(err){setText(current=>current||draft);setError((err as Error).message||'Could not capture the whiteboard. Please try again.');busy.current=false;setThinking(false);setAnalyzing(false)}
  }
  async function editBoard(operation:'edit'|'clear'|'undo', commands:BoardCommand[]=[]){
   if(!session||busy.current||outgoing)return;
@@ -79,15 +109,16 @@ export default function Home() {
  {strokes.map(s=><polyline key={s.id} points={s.points} stroke={s.color} strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round"/>)}</svg>
  {selected&&!pen&&<div className="element-editor"><span>{selected.kind}</span>{selected.kind==='text'&&<><input aria-label="Diagram label" maxLength={120} value={labelDraft} onChange={e=>setLabelDraft(e.target.value)}/><button disabled={!canEdit||!labelDraft.trim()} onClick={()=>editBoard('edit',[{type:'edit_math_label',element_id:selected.id,text:labelDraft}])}>Save</button></>}{[{label:'←',dx:-10,dy:0},{label:'↑',dx:0,dy:-10},{label:'↓',dx:0,dy:10},{label:'→',dx:10,dy:0}].map(move=><button key={move.label} aria-label={`Move element ${move.label}`} disabled={!canEdit} onClick={()=>editBoard('edit',[{type:'move_math_element',element_id:selected.id,dx:move.dx,dy:move.dy}])}>{move.label}</button>)}<button aria-label="Deselect element" onClick={()=>setSelectedElement(null)}><X size={14}/></button></div>}
  <div className="tools"><button className={pen?'selected':''} title="Draw" onClick={()=>setPen(true)}><Pencil size={19}/></button><button className={!pen?'selected':''} title="Select diagrams or shade fraction pieces" onClick={()=>setPen(false)}><MousePointer2 size={19}/></button><span className="divider"/>{['#8063cf','#edaa66','#6baf94'].map(c=><button key={c} aria-label={`Pen color ${c}`} onClick={()=>{setColor(c);setPen(true)}} className={`swatch ${color===c?'active':''}`} style={{background:c}}/>)}<span className="divider"/><button title="Undo last stroke" disabled={!strokes.length} onClick={()=>setStrokes(s=>s.slice(0,-1))}><Undo2 size={19}/></button></div></div>
- <div className="board-footer"><span className="board-status" role="status">{boardBusy?'Updating bars…':session?.whiteboard.last_action?.description||''}</span><button disabled={!session||thinking||boardBusy||!!outgoing||challenge||!session.whiteboard.can_undo} onClick={()=>editBoard('undo')}><Undo2 size={14}/> Undo diagram</button><button disabled={!session||thinking||boardBusy||!!outgoing||challenge||bars.length>2||diagrams.length>0} onClick={()=>editBoard('edit',[{type:'create_fraction_bar',numerator:1,denominator:3},{type:'create_fraction_bar',numerator:1,denominator:4}])}>Draw fraction bars <ArrowRight size={15}/></button></div></section>
- <aside><div className="student-top"><button title="Read Curio’s latest message aloud" onClick={()=>{if('speechSynthesis' in window){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(messages.filter(m=>m.role==='curio').at(-1)?.text||greeting));}}}><Volume2 size={17}/></button></div><div className="avatar-stage"><div className="avatar-size"><Curio thinking={thinking}/></div><span className="sr-only" role="status">{thinking?'Curio is thinking':''}</span></div><div className="student-bottom">{challenge&&<div className="practice-notice" role="status"><span>Independent practice · Curio’s drawing is paused</span><button disabled={thinking||boardBusy||!!outgoing} onClick={()=>act('explore')}>Back to exploring <ArrowRight size={14}/></button></div>}<div ref={conversation} className="conversation" aria-live="polite">{!session&&<div className="bubble">{greeting}</div>}{messages.map(m=><div key={m.id} className={`bubble ${m.role==='you'?'learner':''}`}><small>{m.role==='you'?'YOU':'CURIO'}</small>{m.text}</div>)}
+ <div className="board-footer"><button className="show-sketch" disabled={!session||thinking||boardBusy||!!outgoing} onClick={showSketch}><Eye size={15}/>{analyzing?'Looking…':'Show Curio'}</button><span className="board-status" role="status">{analyzing?'Curio is looking at your sketch…':boardBusy?'Updating board…':session?.whiteboard.last_action?.description||''}</span><button disabled={!session||thinking||boardBusy||!!outgoing||challenge||!session.whiteboard.can_undo} onClick={()=>editBoard('undo')}><Undo2 size={14}/> Undo diagram</button><button disabled={!session||thinking||boardBusy||!!outgoing||challenge||bars.length>2||diagrams.length>0} onClick={()=>editBoard('edit',[{type:'create_fraction_bar',numerator:1,denominator:3},{type:'create_fraction_bar',numerator:1,denominator:4}])}>Draw fraction bars <ArrowRight size={15}/></button></div></section>
+ <aside><div className="student-top"><button title="Read Curio’s latest message aloud" onClick={()=>{if('speechSynthesis' in window){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(messages.filter(m=>m.role==='curio').at(-1)?.text||greeting));}}}><Volume2 size={17}/></button></div><div className="avatar-stage"><div className="avatar-size"><Curio thinking={thinking}/></div><span className="sr-only" role="status">{thinking?'Curio is thinking':''}</span></div><div className="student-bottom">{challenge&&<div className="practice-notice" role="status"><span>Independent practice · Curio’s drawing is paused</span><button disabled={thinking||boardBusy||!!outgoing} onClick={()=>act('explore')}>Back to exploring <ArrowRight size={14}/></button></div>}<div ref={conversation} className="conversation" aria-live="polite">{!session&&<div className="bubble">{greeting}</div>}{messages.map(m=><div key={m.id} className={`bubble ${m.role==='you'?'learner':''}`}><small>{m.role==='you'?'YOU':'CURIO'}{m.kind==='sketch'?' · SHARED DRAWING':''}</small>{m.text}</div>)}
  {outgoing&&<div className="bubble learner outgoing"><small>YOU</small>{outgoing.text}{outgoing.failed&&<div className="message-retry"><span>Reply not received</span><button disabled={thinking} onClick={()=>act('messages',outgoing)}>Retry</button></div>}</div>}
- {thinking&&session&&<div className="bubble typing" role="status"><span className="typing-dots" aria-hidden="true"><i/><i/><i/></span><span>Curio is typing…</span></div>}
+ {thinking&&session&&<div className="bubble typing" role="status"><span className="typing-dots" aria-hidden="true"><i/><i/><i/></span><span>{analyzing?'Curio is looking at your sketch…':'Curio is typing…'}</span></div>}
  </div>
+ {latestSketch&&<div className="sketch-status" role="status">{sketchChanged?'Drawing changed · Show Curio again':latestSketch.analysis.needs_clarification?'Curio needs a little clarification':'Curio has seen this snapshot'}</div>}
  {error&&<div className="connection-error" role="alert">{error}</div>}
  {!started?<button className="primary start" disabled={loading||thinking} onClick={start}>{loading?'Connecting…':thinking?'Starting…':'Let’s teach Curio'} <ArrowRight size={18}/></button>:<form onSubmit={e=>{e.preventDefault();act('messages')}} className="reply"><input ref={composer} maxLength={4000} aria-label="Your explanation" placeholder={thinking?"Write your next thought…":"Teach Curio something…"} value={text} onChange={e=>setText(e.target.value)}/><button aria-label="Send explanation" disabled={!text.trim()||thinking||boardBusy||!!outgoing}><ArrowUp size={19}/></button></form>}
  <div className="student-actions"><button disabled={!session||challenge||thinking||boardBusy||!!outgoing} onClick={()=>act('hints')}><Lightbulb size={16}/> A little hint</button><button disabled={!session||thinking||challenge||boardBusy||!!outgoing} onClick={()=>act('challenge')}>New puzzle <ArrowRight size={14}/></button></div></div></aside></div>
 
- {report&&<div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="report-title"><button className="close" aria-label="Close report" onClick={()=>setReport(false)}><X/></button><span className="eyebrow">YOUR LEARNING JOURNAL</span><h2 id="report-title">Little steps, real discoveries.</h2><p>Conversations and hints are saved on this computer by the backend. Diagrams are saved too; freehand strokes stay in this tab. A mastery evaluator is not connected yet.</p><div className="report-stats"><span><strong>{messages.filter(m=>m.role==='you').length}</strong> explanations</span><span><strong>{hints}</strong> hints used</span><span><strong>{strokes.length}</strong> current strokes</span></div><h3>Your words</h3>{messages.filter(m=>m.role==='you').map((m,i)=><blockquote key={i}>{m.text}</blockquote>)}{!messages.some(m=>m.role==='you')&&<p>Your explanations will appear here as you teach.</p>}<p><b>Independent challenge:</b> {challenge?'Practice opened; evaluation pending.':messages.some(m=>m.kind==='challenge')?'Left practice to explore; not graded.':'Not attempted.'}</p><p><b>Evaluator check:</b> Not run. No mastery result is available.</p><button className="primary" onClick={()=>setReport(false)}>Back to workspace <ArrowRight size={17}/></button></section></div>}
+ {report&&<div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true" aria-labelledby="report-title"><button className="close" aria-label="Close report" onClick={()=>setReport(false)}><X/></button><span className="eyebrow">YOUR LEARNING JOURNAL</span><h2 id="report-title">Little steps, real discoveries.</h2><p>Conversations and hints are saved on this computer by the backend. Diagrams are saved too; freehand strokes stay in this tab. A mastery evaluator is not connected yet.</p><div className="report-stats"><span><strong>{messages.filter(m=>m.role==='you').length}</strong> explanations</span><span><strong>{hints}</strong> hints used</span><span><strong>{strokes.length}</strong> current strokes</span></div>{latestSketch&&<><h3>Last shared sketch</h3><p>{latestSketch.analysis.summary}</p><p>{latestSketch.analysis.needs_clarification?'Clarification requested; interpretation is uncertain.':'Snapshot observations recorded; not a mastery assessment.'}</p></>}<h3>Your words</h3>{messages.filter(m=>m.role==='you').map((m,i)=><blockquote key={i}>{m.text}</blockquote>)}{!messages.some(m=>m.role==='you')&&<p>Your explanations will appear here as you teach.</p>}<p><b>Independent challenge:</b> {challenge?'Practice opened; evaluation pending.':messages.some(m=>m.kind==='challenge')?'Left practice to explore; not graded.':'Not attempted.'}</p><p><b>Evaluator check:</b> Not run. No mastery result is available.</p><button className="primary" onClick={()=>setReport(false)}>Back to workspace <ArrowRight size={17}/></button></section></div>}
  </main>;
 }

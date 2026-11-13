@@ -66,15 +66,15 @@ Backend tests use a temporary database and mocked Gemini responses; they do not 
 
 ## Product and implementation
 
-Read [Curio product direction](docs/PRODUCT_SPEC.md) and the [original TeachBack spec](docs/TeachBack_AI_Product_Spec_v1.1.md). Implemented: animated avatar, drawing workspace, editable fraction examples, durable backend sessions, Gemini text dialogue, hint tracking, independent practice and a practice journal. Live voice, sketch vision, independent evaluation and mastery reporting remain milestones. Curio does not award mastery.
+Read [Curio product direction](docs/PRODUCT_SPEC.md) and the [original TeachBack spec](docs/TeachBack_AI_Product_Spec_v1.1.md). Implemented: animated avatar, drawing workspace, editable fraction examples, durable backend sessions, Gemini text dialogue, hint tracking, independent practice and a practice journal. Live voice, independent evaluation and mastery reporting remain milestones. Curio does not award mastery.
 
 ## Editable whiteboard actions
 
 Gemini returns structured JSON with a reply and allowlisted create/shade commands. The backend validates fraction bounds (whole numbers, denominators 1–24, numerator no larger than denominator), exact explicitly written fractions, existing bar IDs, part indices, board capacity (four bars), canvas revision and independent-practice restrictions. A batch commits atomically with its conversation turn, with ownership and source event IDs. Equal-width geometry is computed by the SVG renderer rather than the model. Schema validation uses the [Gemini JSON Schema interface](https://ai.google.dev/gemini-api/docs/structured-output).
 
-After drawing, the selection tool is enabled: tap a piece to shade or unshade it (keyboard Enter/Space also works). The displayed fraction follows the current shading. **Undo bars** restores the preceding bar action without touching pen strokes. The clear control removes bars and local strokes; bar changes are undoable. AI commands can add bars, change requested shading, or clear the board for a fresh drawing; they cannot silently change existing bar partitions. Ask Curio to start a new drawing to clear and replace the board automatically. General 2D geometry, number lines, equations and function graphs are also supported; freehand vision remains pending.
+After drawing, the selection tool is enabled: tap a piece to shade or unshade it (keyboard Enter/Space also works). The displayed fraction follows the current shading. **Undo bars** restores the preceding bar action without touching pen strokes. The clear control removes bars and local strokes; bar changes are undoable. AI commands can add bars, change requested shading, or clear the board for a fresh drawing; they cannot silently change existing bar partitions. Ask Curio to start a new drawing to clear and replace the board automatically. General 2D geometry, number lines, equations and function graphs are also supported; freehand sketch analysis is available through Show Curio.
 
-Structured bar state is sent to Gemini as context; learner freehand drawings are not analyzed. Session recovery initializes missing board state for sessions created before this feature.
+Structured bar state is sent to Gemini as context; learner freehand drawings are analyzed only when explicitly shared with Show Curio. Session recovery initializes missing board state for sessions created before this feature.
 
 ## Broader math diagrams
 
@@ -85,3 +85,13 @@ Function graphs are sampled on the backend using an allowlisted expression inter
 If Curio says it cannot draw during a challenge, click **Back to exploring** in the practice banner above the chat. This explicitly ends independent practice and restores drawing and hints while preserving the session history; it does not mark the challenge as passed. **New puzzle** starts a fresh practice attempt.
 
 Ask “clear the board”, “erase this and draw a triangle”, or “now draw a number line instead” to start fresh. Curio emits a validated `clear_whiteboard` followed by the creation command in one atomic batch. **Undo diagram** restores the preceding diagram and any cleared pen strokes still available in the current tab. Strokes drawn after submitting a request are retained, and retrying a completed clear does not erase them again. Independent practice continues to block AI drawing and clearing; use **Back to exploring** first.
+
+## Sketch understanding
+
+Draw with the pen, optionally type a question such as “what did I circle?”, then click **Show Curio** below the whiteboard. This captures only the board SVG, including its current diagrams and freehand strokes, as a 1200×810 PNG. No webcam, screen capture permission or file upload is used. The snapshot and question are sent to Gemini for visual analysis, with known diagram IDs and the current practice phase. The normal Send button continues the conversation; use Show Curio again after changing the drawing.
+
+Curio references visible marks and asks a focused question. Low-confidence or ungrounded observations produce a clarification request. A small status indicates whether the drawing changed since the last shared snapshot. Vision cannot change the board and never awards mastery. In independent practice it may describe the sketch and ask for the learner’s reasoning without supplying a solution.
+
+Snapshot requests validate PNG format, dimensions, size (2 MB), canvas revision and sketch identity. Retries are idempotent, and stale snapshots are rejected. Raw images are sent transiently to Gemini and are not stored in SQLite; the session stores image hashes, revision IDs, observations, uncertainty and the resulting conversation. Current sketch observations are supplied to later chat turns only if both the diagram revision and freehand-content hash still match.
+
+Set `GEMINI_VISION_MODEL` optionally to choose a separate image-capable model; otherwise it uses `GEMINI_MODEL`. Install updated backend requirements and restart if needed.

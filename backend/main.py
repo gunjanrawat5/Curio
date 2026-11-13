@@ -2,6 +2,7 @@
 import asyncio
 import os
 import json
+import hashlib
 from copy import deepcopy
 from typing import Literal
 from pathlib import Path
@@ -13,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from backend.store import SessionStore, event, CHALLENGE
 from backend.gemini import generate_reply, ProviderError
+from backend.vision import CanvasSnapshot, analyze_sketch, grounded_analysis
 from backend.whiteboard import CreateBar, ShadePart, DiagramCommand, BoardError, apply_commands
 
 load_dotenv(Path(__file__).resolve().parents[1] / '.env')
@@ -30,9 +32,14 @@ class Turn(BaseModel):
     request_id: UUID
     text: str = Field(min_length=1, max_length=4000)
     canvas_revision: int | None = Field(default=None, ge=0)
+    sketch_revision: str | None = Field(default=None, pattern=r'^[a-f0-9]{64}$')
 
 class Action(BaseModel):
     request_id: UUID
+
+class SketchTurn(Action):
+    snapshot: CanvasSnapshot
+    question: str = Field(default='Can you look at my drawing?', min_length=1, max_length=4000)
 
 class BoardAction(Action):
     canvas_revision: int = Field(ge=0)
@@ -92,7 +99,11 @@ async def send_message(session_id: UUID, turn: Turn):
         learner = event('you', text)
         try:
             # The caller cannot replace history or the system prompt.
-            reply = await generate_reply([*session['messages'], learner], session['phase'], {k: v for k, v in session['whiteboard'].items() if k != 'history'})
+            board_context = {k: v for k, v in session['whiteboard'].items() if k != 'history'}
+            latest = session.get('sketches', [])[-1:]
+            if latest and latest[0]['canvas_revision'] == turn.canvas_revision == session['whiteboard']['revision'] and latest[0]['sketch_revision'] == turn.sketch_revision:
+                board_context['vision_context'] = {**latest[0], 'current': True}
+            reply = await generate_reply([*session['messages'], learner], session['phase'], board_context)
         except ProviderError as exc:
             raise HTTPException(exc.status, exc.message) from None
         if reply.commands:
@@ -196,5 +207,38 @@ async def explore(session_id: UUID, action: Action):
             session['phase'] = 'teaching'
             session['messages'].append(event('curio', "We're back to exploring math together! I can help draw again. What would you like to put on the board?", 'explore'))
         session['requests'][str(action.request_id)] = 'explore'
+        app.state.store.save(session)
+        return public(session)
+
+
+@app.post('/sessions/{session_id}/sketch')
+async def show_sketch(session_id: UUID, turn: SketchTurn):
+    try:
+        image = turn.snapshot.decode()
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    image_hash = hashlib.sha256(image).hexdigest()
+    fingerprint = 'sketch:' + hashlib.sha256(json.dumps({'image': image_hash, 'canvas_revision': turn.snapshot.canvas_revision,
+        'sketch_revision': turn.snapshot.sketch_revision, 'stroke_count': turn.snapshot.stroke_count, 'question': turn.question}, sort_keys=True).encode()).hexdigest()
+    async with lock(session_id):
+        session = get_session(session_id)
+        if already_done(session, turn.request_id, fingerprint):
+            return public(session)
+        if turn.snapshot.canvas_revision != session['whiteboard']['revision']:
+            raise HTTPException(409, 'The board changed before Curio could look. Show the current sketch again.')
+        if len(session['messages']) >= 120:
+            raise HTTPException(409, 'This session is full. Please start a new session.')
+        try:
+            analysis = await analyze_sketch(image, turn.snapshot, session['whiteboard'], session['messages'], session['phase'], turn.question)
+        except ProviderError as exc:
+            raise HTTPException(exc.status, exc.message) from None
+        analysis = grounded_analysis(analysis, session['whiteboard'])
+        learner = event('you', turn.question, 'sketch')
+        learner['snapshot'] = {'canvas_revision': turn.snapshot.canvas_revision, 'sketch_revision': turn.snapshot.sketch_revision, 'image_sha256': image_hash}
+        observed = {**learner['snapshot'], 'event_id': learner['id'], 'created_at': learner['created_at'], 'stroke_count': turn.snapshot.stroke_count,
+            'analysis': analysis.model_dump()}
+        session.setdefault('sketches', []).append(observed)
+        session['messages'].extend([learner, event('curio', analysis.reply, 'sketch_reply')])
+        session['requests'][str(turn.request_id)] = fingerprint
         app.state.store.save(session)
         return public(session)
